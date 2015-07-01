@@ -21,6 +21,7 @@ class StartCeleryWorker(WorkerSetup):
             git_sync_dir,
             worker_dir,
             kill_existing='True',
+            delete_pyc_files='True',
             remount_dir='',
             queue='celery',
             celery_cmd='celery',
@@ -29,7 +30,8 @@ class StartCeleryWorker(WorkerSetup):
             broker='',
             ld_library_path='/usr/local/lib',
             heartbeat_interval='5',
-            maxtasksperchild='1',
+            gossip='False',
+            maxtasksperchild='1024',
             Ofair='True',
             loglevel='info',
             user='ubuntu',
@@ -42,23 +44,28 @@ class StartCeleryWorker(WorkerSetup):
 
         # error checking
         kill_existing = to_bool(kill_existing)
+        delete_pyc_files = to_bool(delete_pyc_files)
+        gossip = to_bool(gossip)
         Ofair = to_bool(Ofair)
 
         # build master sync command
         sync_cmd_list = []
-        if git_sync_dir:
-            if remount_dir.strip():
-                sync_cmd_list += ["sudo mount -o remount %s" % qd(remount_dir)]
+        if remount_dir.strip():
+            sync_cmd_list += ["sudo mount -o remount %s" % qd(remount_dir)]
+        if git_sync_dir.strip():
             sync_cmd_list += [
                 "cd %s" % qd(git_sync_dir),
                 "git pull",
                 "git submodule init",
                 "git submodule update",
             ]
+        if delete_pyc_files:
+            sync_cmd_list += ["find %s -name '*.pyc' -delete" % qd(worker_dir)]
         if master_setup_cmd:
             sync_cmd_list += [master_setup_cmd]
         if sync_cmd_list:
             self._sync_cmd = "; ".join(sync_cmd_list)
+
 
         # session_cmd: command that runs inside the tmux session
         session_cmd_list = [
@@ -111,14 +118,17 @@ class StartCeleryWorker(WorkerSetup):
         self._start_cmd = "; ".join(start_cmd_list)
 
     def on_add_node(self, node, nodes, master, user, user_shell, volumes):
-        run_cmd(node, self._start_cmd, self._user)
+        start_cmd = self._start_cmd.replace('PUBLIC_IP_ADDRESS', node.ip_address)
+        run_cmd(node, start_cmd, self._user)
 
     def run(self, nodes, master, user, user_shell, volumes):
+        print "StartCeleryWorker.run: %s, %s, %s, %s, %s" % (nodes, master, user, user_shell, volumes)
         if self._sync_cmd:
             run_cmd(master, self._sync_cmd, self._user, silent=False)
         for node in nodes:
+            start_cmd = self._start_cmd.replace('PUBLIC_IP_ADDRESS', node.ip_address)
             self.pool.simple_job(
-                run_cmd, args=(node, self._start_cmd, self._user), jobid=node.alias)
+                run_cmd, args=(node, start_cmd, self._user), jobid=node.alias)
         self.pool.wait(len(nodes))
 
 
