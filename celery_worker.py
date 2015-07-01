@@ -60,27 +60,6 @@ class StartCeleryWorker(WorkerSetup):
         if sync_cmd_list:
             self._sync_cmd = "; ".join(sync_cmd_list)
 
-        # build worker node command
-        celery_args = [
-            qs(celery_cmd), 'worker',
-            '--hostname', qs('%%h-%s' % queue),
-            '--queues', qs(queue),
-        ]
-        if app.strip():
-            celery_args += ['--app', qs(app)]
-        if broker.strip():
-            celery_args += ['--broker', qs(broker)]
-        if concurrency.strip():
-            celery_args += ['--concurrency', int(concurrency)]
-        if maxtasksperchild.strip():
-            celery_args += ['--maxtasksperchild', int(maxtasksperchild)]
-        if heartbeat_interval.strip():
-            celery_args += ['--heartbeat-interval', int(heartbeat_interval)]
-        if loglevel.strip():
-            celery_args += ['--loglevel', qs(loglevel)]
-        if Ofair:
-            celery_args += ['-Ofair']
-
         # session_cmd: command that runs inside the tmux session
         session_cmd_list = [
             # (use double quotes so that bash expands $LD_LIBRARY_PATH)
@@ -88,10 +67,32 @@ class StartCeleryWorker(WorkerSetup):
         ]
         if worker_setup_cmd:
             session_cmd_list += [worker_setup_cmd]
-        session_cmd_list += [
-            'cd %s' % qd(worker_dir),
-            ' '.join(str(x) for x in celery_args),
-        ]
+        session_cmd_list += ['cd %s' % qd(worker_dir)]
+
+        # If the celery_cmd is empty, we don't run the celery worker
+        if celery_cmd.strip():
+            # build worker node command
+            celery_args = [
+                qs(celery_cmd), 'worker',
+                '--hostname', qs('%%h-%s' % queue),
+                '--queues', qs(queue),
+            ]
+            if app.strip():
+                celery_args += ['--app', qs(app)]
+            if broker.strip():
+                celery_args += ['--broker', qs(broker)]
+            if concurrency.strip():
+                celery_args += ['--concurrency', int(concurrency)]
+            if maxtasksperchild.strip():
+                celery_args += ['--maxtasksperchild', int(maxtasksperchild)]
+            if heartbeat_interval.strip():
+                celery_args += ['--heartbeat-interval', int(heartbeat_interval)]
+            if loglevel.strip():
+                celery_args += ['--loglevel', qs(loglevel)]
+            if Ofair:
+                celery_args += ['-Ofair']
+            session_cmd_list += [' '.join(str(x) for x in celery_args)]
+
         # wait if there is an error
         session_cmd_list += ['read']
         session_cmd = "; ".join(session_cmd_list)
