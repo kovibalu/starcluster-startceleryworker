@@ -52,6 +52,8 @@ class StartCeleryWorker(WorkerSetup):
         sync_cmd_list = []
         if remount_dir.strip():
             sync_cmd_list += ["sudo mount -o remount %s" % qd(remount_dir)]
+        if master_setup_cmd:
+            sync_cmd_list += [master_setup_cmd]
         if git_sync_dir.strip():
             sync_cmd_list += [
                 "cd %s" % qd(git_sync_dir),
@@ -61,20 +63,18 @@ class StartCeleryWorker(WorkerSetup):
             ]
         if delete_pyc_files:
             sync_cmd_list += ["find %s -name '*.pyc' -delete" % qd(worker_dir)]
-        if master_setup_cmd:
-            sync_cmd_list += [master_setup_cmd]
         if sync_cmd_list:
             self._sync_cmd = "; ".join(sync_cmd_list)
 
-
         # session_cmd: command that runs inside the tmux session
         session_cmd_list = [
+            'echo "We are in tmux now"',
             # (use double quotes so that bash expands $LD_LIBRARY_PATH)
-            'export LD_LIBRARY_PATH="' + ld_library_path + ':$LD_LIBRARY_PATH"'
+            'export LD_LIBRARY_PATH="' + ld_library_path + ':$LD_LIBRARY_PATH"',
         ]
+        session_cmd_list += ['cd %s' % qd(worker_dir)]
         if worker_setup_cmd:
             session_cmd_list += [worker_setup_cmd]
-        session_cmd_list += ['cd %s' % qd(worker_dir)]
 
         # If the celery_cmd is empty, we don't run the celery worker
         if celery_cmd.strip():
@@ -103,6 +103,8 @@ class StartCeleryWorker(WorkerSetup):
         # wait if there is an error
         session_cmd_list += ['read']
         session_cmd = "; ".join(session_cmd_list)
+        # Make sure we use bash, some things don't work with sh...
+        session_cmd = "bash -c %s" % qs(session_cmd)
 
         # build final start command
         tmux_session = "celery-" + queue
